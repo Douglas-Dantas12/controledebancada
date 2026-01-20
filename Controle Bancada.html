@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DHL - Controle de Tempo por Bancada</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 10px;
+      background-color: #f5f5f5;
+    }
+
+    /* ======= CABEÇALHO ======= */
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #fff;
+      padding: 10px 20px 0 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      gap: 10px;
+      border-bottom: 6px solid #d40511; /* Linha vermelha DHL */
+    }
+
+    .logo {
+      height: 55px;
+      flex-shrink: 0;
+    }
+
+    h1 {
+      text-align: center;
+      flex: 1 1 100%;
+      margin: 0;
+      font-size: 1.7em;
+      color: #d40511; /* Vermelho DHL */
+    }
+
+    .powerbi-btn {
+      display: flex;
+      align-items: center;
+      background-color: #f2c811;
+      color: #000;
+      text-decoration: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: bold;
+      transition: 0.3s;
+      border: 1px solid #d4b106;
+    }
+
+    .powerbi-btn:hover {
+      background-color: #ffdb4d;
+    }
+
+    .powerbi-btn img {
+      height: 22px;
+      margin-right: 8px;
+    }
+
+    /* Layout responsivo */
+    @media (min-width: 600px) {
+      header {
+        flex-wrap: nowrap;
+        align-items: center;
+      }
+      h1 {
+        flex: 1;
+        text-align: center;
+      }
+    }
+
+    /* ======= CONTEÚDO ======= */
+    .bancada {
+      background: #fff;
+      border-radius: 12px;
+      padding: 15px;
+      margin: 10px 0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    button {
+      margin: 5px;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .start {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .stop {
+      background-color: #f44336;
+      color: white;
+    }
+
+    #activeStatus {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      z-index: 1000;
+    }
+
+    .active-box {
+      display: flex;
+      align-items: center;
+      background: #fff;
+      border: 2px solid #007BFF;
+      border-radius: 10px;
+      padding: 8px 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      min-width: 180px;
+    }
+
+    .active-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #007BFF;
+      margin-right: 10px;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+
+    #log {
+      margin-top: 30px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .input-tag {
+      padding: 6px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #bbb;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <!-- Logo DHL Supply Chain -->
+    <img src="https://assets.dpdhl-brands.com/guides/dhl/guides/co-sub-branding/business-units/dhl_supply-chain-logo_thumb.png" alt="DHL Supply Chain" class="logo">
+
+    <!-- Título -->
+    <h1>Controle de Tempo por Bancada</h1>
+
+    <!-- Botão Power BI -->
+    <a class="powerbi-btn" href="https://app.powerbi.com/groups/me/apps/4f178ee2-074f-4d23-9cbf-9d8176011e85/reports/28d9aa3b-c634-4ca6-9d85-649af44526eb/bb9deab0154b262b0718?ctid=cd99fef8-1cd3-4a2a-9bdf-15531181d65e&experience=power-bi" target="_blank">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/c/cf/New_Power_BI_Logo.svg" alt="Power BI">
+      Power BI
+    </a>
+  </header>
+
+  <div id="activeStatus"></div>
+  <div id="bancadas"></div>
+  <div id="log">
+    <h3>Registros</h3>
+    <ul id="recordsList"></ul>
+  </div>
+
+  <script>
+    const POWER_AUTOMATE_URL = "https://51a805d34213e248a3506f5db8fe28.55.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/3f701d53fccb4d0ab1d69480d82d0bc8/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=RF4cCNEBtnjWQAhj83JSl_DuLR7P6IL54cJT7pulNww";
+
+    const bancadas = [
+      "BG - 01",
+      "BG - 02",
+      "BM - 01",
+      "IND - 01",
+      "IND - 02",
+      "BANCADA PTZ",
+      "BDA - 01"
+    ];
+
+    const registros = [];
+    const ativos = {};
+
+    const container = document.getElementById('bancadas');
+    const statusContainer = document.getElementById('activeStatus');
+    const recordsList = document.getElementById('recordsList');
+
+    function formatarDataBR(date) {
+      return date.toLocaleString("pt-BR");
+    }
+
+    function enviarPowerAutomate(dado) {
+      if (!POWER_AUTOMATE_URL) {
+        console.warn("⚠️ Nenhum webhook configurado.");
+        return;
+      }
+      fetch(POWER_AUTOMATE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dado)
+      }).catch(err => console.error('Erro Power Automate:', err));
+    }
+
+    bancadas.forEach(nome => {
+      const div = document.createElement('div');
+      div.className = 'bancada';
+      div.innerHTML = `
+        <h2>${nome}</h2>
+        <input type="text" placeholder="Digite ou escaneie a TAG" class="input-tag" />
+        <button class="start">Iniciar</button>
+        <button class="stop" disabled>Parar</button>
+      `;
+      container.appendChild(div);
+
+      const inputTag = div.querySelector('.input-tag');
+      const startBtn = div.querySelector('.start');
+      const stopBtn = div.querySelector('.stop');
+
+      startBtn.addEventListener('click', () => {
+        const tag = inputTag.value.trim();
+        if (!tag) {
+          alert("⚠️ Preencha a TAG antes de iniciar!");
+          return;
+        }
+
+        if (!ativos[nome]) {
+          const inicio = new Date();
+          ativos[nome] = { inicio, tag };
+          inputTag.disabled = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+
+          enviarPowerAutomate({
+            evento: "inicio",
+            bancada: nome,
+            tag: tag,
+            hora: formatarDataBR(inicio)
+          });
+
+          atualizarStatus();
+        }
+      });
+
+      stopBtn.addEventListener('click', () => {
+        if (ativos[nome]) {
+          const fim = new Date();
+          const { inicio, tag } = ativos[nome];
+          const duracao = ((fim - inicio) / 1000).toFixed(2);
+
+          registros.push({
+            nome,
+            tag,
+            inicio: formatarDataBR(inicio),
+            fim: formatarDataBR(fim),
+            duracao
+          });
+
+          enviarPowerAutomate({
+            evento: "fim",
+            bancada: nome,
+            tag: tag,
+            hora: formatarDataBR(fim),
+            duracao_segundos: duracao
+          });
+
+          delete ativos[nome];
+          inputTag.disabled = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          inputTag.value = "";
+          atualizarStatus();
+          atualizarRegistros();
+        }
+      });
+    });
+
+    function atualizarStatus() {
+      statusContainer.innerHTML = '';
+      Object.keys(ativos).forEach(nome => {
+        const { tag } = ativos[nome];
+        const box = document.createElement('div');
+        box.className = 'active-box';
+        box.innerHTML = `<div class="active-dot"></div><span>${nome} = ${tag}</span>`;
+        statusContainer.appendChild(box);
+      });
+    }
+
+    function atualizarRegistros() {
+      recordsList.innerHTML = registros
+        .map(r => `<li>${r.nome} [${r.tag}] — Início: ${r.inicio}, Fim: ${r.fim}, Duração: ${r.duracao}s</li>`)
+        .join('');
+    }
+  </script>
+</body>
+<script>
+  let wakeLock = null;
+
+  async function ativarWakeLock() {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        console.log("Wake Lock ativado");
+
+        wakeLock.addEventListener("release", () => {
+          console.log("Wake Lock liberado");
+        });
+
+        document.addEventListener("visibilitychange", async () => {
+          if (wakeLock !== null && document.visibilityState === "visible") {
+            wakeLock = await navigator.wakeLock.request("screen");
+            console.log("Wake Lock reativado");
+          }
+        });
+      } else {
+        console.warn("Wake Lock API não suportada");
+      }
+    } catch (err) {
+      console.error("Erro ao ativar Wake Lock:", err);
+    }
+  }
+
+  // Chrome exige interação humana → clique toca o WakeLock
+  document.addEventListener("click", ativarWakeLock, { once: true });
+</script>
+</html>
